@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
+import { TTS_ENGINE } from '../config'
+import * as kokoro from '../lib/kokoro'
 
 /**
  * The "why can't he hear me / why can't I hear him" panel.
@@ -122,6 +124,19 @@ export function Diagnostics() {
       <div className="diag-sec">SPEAKING · press T to test</div>
       <Row k="engine" v={String(t.engine ?? 'system')} />
       <Row k="voice" v={String(t.voice || '—')} />
+      {TTS_ENGINE === 'kokoro' && (
+        <Row
+          k="kokoro"
+          v={
+            kokoro.isReady()
+              ? 'ready'
+              : kokoro.isUnavailable()
+                ? `off — ${kokoro.lastError || 'failed'}`
+                : `loading ${Math.round(kokoro.loadProgress() * 100)}%`
+          }
+          bad={kokoro.isUnavailable()}
+        />
+      )}
       <Row k="handed to OS" v={String(t.spoken ?? 0)} />
       <Row k="actually spoke" v={String(t.started ?? 0)} bad={(t.started ?? 0) === 0} />
       <Row k="failures" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />

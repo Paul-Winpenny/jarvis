@@ -10,12 +10,12 @@
  * no API key, nothing leaves the machine — but it sounds like a person. It
  * carries four British male voices, which is what this project actually wants.
  *
- * The cost is a one-time ~86MB model download, cached by the browser
- * afterwards. It's fetched during the boot sequence so the first "Hey Jarvis"
+ * The cost is a one-time model download (~330MB at fp32 on WebGPU, ~86MB at
+ * q8 on WASM), cached by the browser afterwards. It's fetched during the boot sequence so the first "Hey Jarvis"
  * isn't waiting on it, and anything that goes wrong falls back to Daniel.
  */
 
-import { KOKORO_VOICE } from '../config'
+import { KOKORO_DEVICE, KOKORO_DTYPE, KOKORO_VOICE } from '../config'
 
 type Kokoro = {
   generate: (
@@ -69,6 +69,21 @@ const voice = resolveVoice()
 const MAX_FAILURES = 3
 let failures = 0
 
+/**
+ * Is there a WebGPU adapter? `navigator.gpu` existing is not enough — Chrome
+ * exposes it on machines whose GPU is blocklisted, and requestAdapter() then
+ * resolves to null.
+ */
+async function hasWebGPU(): Promise<boolean> {
+  const gpu = (navigator as { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu
+  if (!gpu) return false
+  try {
+    return (await gpu.requestAdapter()) != null
+  } catch {
+    return false
+  }
+}
+
 export async function load(): Promise<Kokoro | null> {
   if (model) return model
   if (failed) return null
@@ -76,15 +91,26 @@ export async function load(): Promise<Kokoro | null> {
 
   loading = (async () => {
     try {
+      const device = KOKORO_DEVICE
+      if (device === 'webgpu' && !(await hasWebGPU())) {
+        // On the CPU Kokoro is slower than realtime on most machines, which
+        // turns every reply into a pause. The system voice is the better
+        // default; VITE_KOKORO_DEVICE=wasm opts into the CPU anyway.
+        throw new Error(
+          'WebGPU is not available in this browser — set VITE_KOKORO_DEVICE=wasm to run Kokoro on the CPU',
+        )
+      }
+      const dtype =
+        KOKORO_DTYPE === 'auto' ? (device === 'webgpu' ? 'fp32' : 'q8') : KOKORO_DTYPE
       const { KokoroTTS } = await import('kokoro-js')
       const tts = await KokoroTTS.from_pretrained(
         'onnx-community/Kokoro-82M-v1.0-ONNX',
         {
-          // q8 is about 86MB against fp32's 330MB, and the difference is
-          // inaudible through laptop speakers. WebGPU keeps generation ahead
-          // of playback; without it this would be too slow to converse with.
-          dtype: 'q8',
-          device: 'webgpu',
+          // fp32 on WebGPU: int8 kernels tend to fall back to the CPU there,
+          // which is what made q8 slower than realtime. q8 on WASM, where it
+          // is both smaller and faster.
+          dtype,
+          device,
           // The callback is a union across several event shapes; only the
           // download-progress one carries a percentage.
           progress_callback: (p: unknown) => {
