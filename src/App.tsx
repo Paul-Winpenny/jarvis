@@ -470,7 +470,7 @@ export default function App() {
     }
 
     // Pull the neural voice down during the boot sequence so the first
-    // "Hey Jarvis" isn't waiting on an 86MB download. Deliberately not awaited
+    // "Hey Jarvis" isn't waiting on the model download. Deliberately not awaited
     // — if it's slow, JARVIS comes up on the system voice and swaps over the
     // moment the model is ready.
     if (TTS_ENGINE === 'kokoro') {

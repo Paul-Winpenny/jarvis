@@ -94,24 +94,52 @@ export const USE_ELEVENLABS = flag(
 /**
  * Speech engine.
  *
+ *   'kokoro' (default) — an 82M-parameter neural TTS running entirely in the
+ *     browser via ONNX on WebGPU. Four proper British male voices, far better
+ *     sound than the OS voices, and nothing leaves the machine. The model
+ *     (~330MB at fp32) downloads once on first boot and the browser caches it.
+ *     If the browser has no WebGPU, or the model fails to load, JARVIS speaks
+ *     with the system voice instead — see kokoro.ts.
+ *
  *   'system' — the browser's own speechSynthesis. Starts on the next frame,
  *     costs nothing, but is capped by whatever voices the OS ships; on macOS
  *     the British male option is compact Daniel.
- *
- *   'kokoro' — an 82M-parameter neural TTS running entirely in the browser via
- *     ONNX. Four proper British male voices and far better sound, nothing
- *     leaving the machine. MEASURED ON THIS MACHINE at q8/WebGPU it generates
- *     about 2.2x slower than realtime — "Yes, sir?" took 3.3 seconds and a
- *     thirteen-word sentence took nine. That is not a conversation, so it is
- *     not the default. Try `fp32` (see kokoro.ts) before enabling it; int8
- *     quantisation often silently falls back to CPU on WebGPU, which is the
- *     likely cause.
  */
 export const TTS_ENGINE: 'kokoro' | 'system' = choice(
   'VITE_TTS_ENGINE',
   import.meta.env.VITE_TTS_ENGINE,
   ['kokoro', 'system'] as const,
-  'system',
+  'kokoro',
+)
+
+/**
+ * Kokoro model precision. Default 'auto': fp32 on WebGPU, q8 on WASM.
+ *
+ * fp32 is what kokoro-js recommends for WebGPU. The earlier q8/WebGPU setup
+ * measured about 2.2x slower than realtime ("Yes, sir?" took 3.3 seconds),
+ * most likely because int8 ops fall back to the CPU on WebGPU. q8 is the right
+ * choice only for WASM, where it is smaller and faster.
+ */
+export const KOKORO_DTYPE = choice(
+  'VITE_KOKORO_DTYPE',
+  import.meta.env.VITE_KOKORO_DTYPE,
+  ['auto', 'fp32', 'fp16', 'q8', 'q4', 'q4f16'] as const,
+  'auto',
+)
+
+/**
+ * Where Kokoro runs. Default 'webgpu'.
+ *
+ *   'webgpu' — the graphics card. Fast enough to converse with. If the browser
+ *     has no WebGPU adapter, Kokoro is skipped and the system voice is used.
+ *   'wasm'   — the CPU. Works everywhere, but on most machines it generates
+ *     slower than it speaks, so replies come with a pause. Opt-in only.
+ */
+export const KOKORO_DEVICE = choice(
+  'VITE_KOKORO_DEVICE',
+  import.meta.env.VITE_KOKORO_DEVICE,
+  ['webgpu', 'wasm'] as const,
+  'webgpu',
 )
 
 /**

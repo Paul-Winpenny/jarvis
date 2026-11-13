@@ -10,8 +10,9 @@ run headless as a library.
 account, no cloud bill — the brain runs on your existing Claude Code login, and
 the heavy work (the model itself) runs on Anthropic's servers, so even a low-end
 laptop only has to draw the interface. **ElevenLabs is an optional add-on** that
-gives JARVIS a much better voice and sharper hearing; without it he speaks and
-listens through the browser's own speech, and everything still works.
+gives JARVIS a cloud voice and sharper hearing; without it he speaks with
+**Kokoro**, a neural voice that runs on your own graphics card in the browser,
+and listens through the browser's own speech recognition.
 
 ---
 
@@ -33,7 +34,8 @@ can have — Node.js and Chrome. That's the whole list.
   never hears you. JARVIS also needs WebGL, which these browsers provide.
 - **Optional: an ElevenLabs API key** — a good add-on, not a requirement. It
   gives a better voice and sharper transcription; the free tier is plenty for a
-  demo. Without it, everything runs on the browser's own speech.
+  demo. Without it, JARVIS speaks with the local Kokoro voice (see
+  [The Kokoro voice](#the-kokoro-voice)).
 
 Run `npm run setup` after cloning and it checks all of this for you, in plain
 language.
@@ -126,8 +128,9 @@ The loop is designed so that nothing silently dies and barge-in feels natural.
   - **Nothing configured** → the browser's own `SpeechRecognition` (Chrome/Edge),
     guarded by a heartbeat so it recovers when Chrome throttles it.
 - **Speaking** uses the **ElevenLabs voice when a key is present**, and the
-  browser's `speechSynthesis` otherwise. If a cloud call fails it falls back to
-  the browser voice, and if the OS voice itself is broken it latches over to the
+  local **Kokoro** voice otherwise. If Kokoro can't run (no WebGPU, or the model
+  fails to load) or a cloud call fails, it falls back to the browser's
+  `speechSynthesis`, and if the OS voice itself is broken it latches over to the
   cloud voice.
 
 So it works with no keys and auto-upgrades when a key appears — there is no flag
@@ -254,10 +257,38 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 |---|---|
 | `VITE_BACKEND` | `bridge` (default) or `direct` |
 | `VITE_BRIDGE_URL` | Where to reach the bridge |
-| `VITE_TTS_ENGINE` | `system` or `kokoro` |
-| `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
+| `VITE_TTS_ENGINE` | `kokoro` (default) or `system` |
+| `VITE_KOKORO_VOICE` | `bm_george` (default), `bm_fable`, `bm_lewis` or `bm_daniel` |
+| `VITE_KOKORO_DEVICE` | `webgpu` (default) or `wasm` (CPU; works anywhere, slower) |
+| `VITE_KOKORO_DTYPE` | `auto` (default: `fp32` on WebGPU, `q8` on WASM), or `fp32`, `fp16`, `q8`, `q4`, `q4f16` |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
 | `VITE_ANTHROPIC_API_KEY` | Direct mode only |
+
+### The Kokoro voice
+
+JARVIS speaks with [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an
+82M-parameter neural text-to-speech model, running **inside the browser on your
+graphics card** (WebGPU, through `kokoro-js`). There is no server to run, no API
+key and nothing leaves your computer. `npm install` already installed it.
+
+What to expect on your own computer:
+
+1. **First boot downloads the model**, about 330MB, from Hugging Face. The boot
+   screen shows `voice NN%` while it comes down. JARVIS uses the system voice
+   until the download finishes, then switches over. After that the browser
+   caches it, so later boots start offline.
+2. **It needs WebGPU.** Recent Chrome and Edge have it on Windows, macOS and
+   ChromeOS. Check `chrome://gpu`: "WebGPU: Hardware accelerated" is what you
+   want. On Linux you may need to turn on `chrome://flags/#enable-unsafe-webgpu`.
+   Without WebGPU, JARVIS uses the system voice. To run Kokoro on the CPU anyway,
+   set `VITE_KOKORO_DEVICE=wasm`, but expect a pause before each reply.
+3. **Pick a voice** with `VITE_KOKORO_VOICE` in `.env.local`. All four are
+   British male: `bm_george` (the default, a measured RP baritone), `bm_fable`
+   (warmer), `bm_lewis` (lower) and `bm_daniel` (brighter). Restart `npm start`
+   after editing `.env.local`.
+
+Press **D** for diagnostics: it shows which engine is speaking and, if Kokoro
+fell back, why. To go back to the browser's voice, set `VITE_TTS_ENGINE=system`.
 
 ### Adding an ElevenLabs key
 
@@ -313,6 +344,11 @@ Press **T** for a one-line audio self-test.
 
 **No voice at all.** You must be in **Chrome or Edge**, in a **real browser
 window** (not an embedded preview), and you must have **allowed the microphone**.
+
+**He speaks with the flat system voice instead of Kokoro.** Press **D**: the
+diagnostics panel gives the reason. Usually the browser has no WebGPU (see
+[The Kokoro voice](#the-kokoro-voice)), or the first model download is still
+running or was blocked by a firewall. It comes from `huggingface.co`.
 
 **Bridge not reachable.** Check that `npm run bridge` is still running in its
 terminal, and that nothing else is holding port `8787`. If the port is taken,
